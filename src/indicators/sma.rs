@@ -69,7 +69,7 @@ impl Indicator for SMA {
     /// ======================================================
     /// update：核心更新入口（SMA主逻辑）
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // =========================
         // 1. 统一校验入口
         // =========================
@@ -203,20 +203,20 @@ mod tests {
         let mut sma = SMA::new(3, 1000);
 
         // 1. 第 1-2 根 Bar (已闭合)，不应该 Ready
-        sma.update(create_candle(1000, 10.0, true));
-        sma.update(create_candle(2000, 20.0, true));
+        sma.update(&create_candle(1000, 10.0, true));
+        sma.update(&create_candle(2000, 20.0, true));
         assert!(!sma.ready);
         assert!(sma.latest().is_none());
 
         // 2. 第 3 根 Bar (已闭合)，正式 Ready
         // (10 + 20 + 30) / 3 = 20.0
-        sma.update(create_candle(3000, 30.0, true));
+        sma.update(&create_candle(3000, 30.0, true));
         assert!(sma.ready);
         assert_approx(sma.latest().unwrap(), 20.0);
 
         // 3. 第 4 根 Bar (已闭合)，验证窗口滑动（踢出 10.0）
         // (20 + 30 + 40) / 3 = 30.0
-        sma.update(create_candle(4000, 40.0, true));
+        sma.update(&create_candle(4000, 40.0, true));
         assert_approx(sma.latest().unwrap(), 30.0);
         assert_eq!(sma.window.len(), 3);
     }
@@ -226,15 +226,15 @@ mod tests {
         let mut sma = SMA::new(3, 1000); // Period = 3
 
         // 1. 数据不足阶段：Window = [10.0]
-        sma.update(create_candle(1000, 10.0, true));
+        sma.update(&create_candle(1000, 10.0, true));
         assert!(sma.latest().is_none(), "仅 1 根数据不应产出");
 
         // 2. 临界阶段：Window = [10.0, 20.0] (已闭合 2 根)
-        sma.update(create_candle(2000, 20.0, true));
+        sma.update(&create_candle(2000, 20.0, true));
 
         // 此时尝试预览第 3 根。
         // 注意：严苛模式下，只有当 (已闭合 2 根 + 当前 1 根) == 3 时，预览才合法
-        sma.update(create_candle(3000, 30.0, false));
+        sma.update(&create_candle(3000, 30.0, false));
 
         // 如果这里依然返回 None，说明指标内部判断逻辑是 self.window.len() >= self.period
         // 而 window.push 只有在 closed 为 true 时才发生。
@@ -249,7 +249,7 @@ mod tests {
         }
 
         // 3. 正式闭合第 3 根
-        sma.update(create_candle(3000, 30.0, true));
+        sma.update(&create_candle(3000, 30.0, true));
         assert!(sma.ready);
         assert_approx(sma.latest().expect("SMA 闭合 3 根后必须有值"), 20.0);
     }
@@ -259,8 +259,8 @@ mod tests {
         let mut sma = SMA::new(2, 1000);
 
         // 模拟重复发送已确认的 Bar
-        sma.update(create_candle(1000, 10.0, true));
-        sma.update(create_candle(1000, 10.0, true)); // 重复数据
+        sma.update(&create_candle(1000, 10.0, true));
+        sma.update(&create_candle(1000, 10.0, true)); // 重复数据
 
         assert_eq!(
             sma.window.len(),
@@ -270,11 +270,11 @@ mod tests {
         assert_eq!(sma.sum, 10.0);
 
         // 模拟时间倒流的无效数据
-        sma.update(create_candle(500, 50.0, true));
+        sma.update(&create_candle(500, 50.0, true));
         assert_eq!(sma.window.len(), 1, "Should ignore out-of-order candles");
 
         // 模拟价格为 0 的情况
-        sma.update(create_candle(2000, 0.0, true));
+        sma.update(&create_candle(2000, 0.0, true));
         assert!(sma.ready);
         assert_approx(sma.latest().unwrap(), 5.0); // (10 + 0) / 2
     }
@@ -282,24 +282,24 @@ mod tests {
     #[test]
     fn test_sma_large_price_fluctuation_isolation() {
         let mut sma = SMA::new(2, 1000);
-        sma.update(create_candle(1000, 10.0, true));
-        sma.update(create_candle(2000, 20.0, true));
+        sma.update(&create_candle(1000, 10.0, true));
+        sma.update(&create_candle(2000, 20.0, true));
 
         let initial_sum = sma.sum; // 30.0
 
         // 预览一个巨大的价格波动
-        sma.update(create_candle(3000, 1000000.0, false));
+        sma.update(&create_candle(3000, 1000000.0, false));
         assert!(sma.latest().unwrap() > 500000.0);
 
         // 预览价格恢复正常
-        sma.update(create_candle(3000, 30.0, false));
+        sma.update(&create_candle(3000, 30.0, false));
         assert_approx(sma.latest().unwrap(), 25.0); // (20 + 30) / 2
 
         // 确保内部状态从未改变
         assert_eq!(sma.sum, initial_sum);
 
         // 正式提交
-        sma.update(create_candle(3000, 30.0, true));
+        sma.update(&create_candle(3000, 30.0, true));
         assert_approx(sma.latest().unwrap(), 25.0);
     }
 }

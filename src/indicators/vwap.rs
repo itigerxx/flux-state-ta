@@ -90,7 +90,7 @@ impl Indicator for VWAP {
     /// ======================================================
     /// update：VWAP 实时更新逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // =========================
         // 1. 数据校验
         // =========================
@@ -191,13 +191,13 @@ mod tests {
 
         // 1. 第一根 K 线 (Closed)
         // PV = 100 * 10 = 1000, V = 10, VWAP = 100.0
-        vwap.update(create_candle(1000, 100.0, 10.0, true));
+        vwap.update(&create_candle(1000, 100.0, 10.0, true));
         assert!(vwap.ready);
         assert_approx(vwap.latest().unwrap(), 100.0);
 
         // 2. 第二根 K 线 (Closed)
         // PV = 1000 + (110 * 20) = 3200, V = 10 + 20 = 30, VWAP = 106.666...
-        vwap.update(create_candle(2000, 110.0, 20.0, true));
+        vwap.update(&create_candle(2000, 110.0, 20.0, true));
         assert_approx(vwap.latest().unwrap(), 106.66666666666667);
     }
 
@@ -206,7 +206,7 @@ mod tests {
         let mut vwap = VWAP::new(1000);
         
         // 初始数据
-        vwap.update(create_candle(1000, 100.0, 10.0, true));
+        vwap.update(&create_candle(1000, 100.0, 10.0, true));
 
         // --------------------------------------------------
         // 预览测试：同一根 Bar 内价格/成交量跳动
@@ -215,45 +215,45 @@ mod tests {
         
         // Tick 1: 预览 (110 * 10)
         // Temp VWAP = (1000 + 1100) / (10 + 10) = 105.0
-        vwap.update(create_candle(bar_time, 110.0, 10.0, false));
+        vwap.update(&create_candle(bar_time, 110.0, 10.0, false));
         assert_eq!(vwap.last_n(10).len(), 2);
         assert_approx(vwap.latest().unwrap(), 105.0);
 
         // Tick 2: 价格剧烈跳动 (150 * 40)
         // Temp VWAP = (1000 + 6000) / (10 + 40) = 140.0
-        vwap.update(create_candle(bar_time, 150.0, 40.0, false));
+        vwap.update(&create_candle(bar_time, 150.0, 40.0, false));
         assert_eq!(vwap.last_n(10).len(), 2); // 长度不应增加
         assert_approx(vwap.latest().unwrap(), 140.0);
 
         // Tick 3: 最终收盘
-        vwap.update(create_candle(bar_time, 150.0, 40.0, true));
+        vwap.update(&create_candle(bar_time, 150.0, 40.0, true));
         assert_eq!(vwap.last_n(10).len(), 2);
         assert_approx(vwap.latest().unwrap(), 140.0);
 
         // --------------------------------------------------
         // 跨 Bar 验证
         // --------------------------------------------------
-        vwap.update(create_candle(3000, 100.0, 10.0, false));
+        vwap.update(&create_candle(3000, 100.0, 10.0, false));
         assert_eq!(vwap.last_n(10).len(), 3);
     }
 
     #[test]
     fn test_vwap_state_isolation() {
         let mut vwap = VWAP::new(1000);
-        vwap.update(create_candle(1000, 100.0, 10.0, true));
+        vwap.update(&create_candle(1000, 100.0, 10.0, true));
         
         let confirmed_pv = vwap.sum_price_volume;
         let confirmed_v = vwap.sum_volume;
 
         // 注入预览 Tick
-        vwap.update(create_candle(2000, 500.0, 1000.0, false));
+        vwap.update(&create_candle(2000, 500.0, 1000.0, false));
         
         // 核心验证：持久化字段不能被预览 Tick 修改
         assert_eq!(vwap.sum_price_volume, confirmed_pv, "Preview must not pollute sum_price_volume");
         assert_eq!(vwap.sum_volume, confirmed_v, "Preview must not pollute sum_volume");
 
         // 再次预览（同一根 Bar），验证它是基于 confirmed 状态计算，而不是上一个预览状态
-        vwap.update(create_candle(2000, 110.0, 10.0, false));
+        vwap.update(&create_candle(2000, 110.0, 10.0, false));
         // (1000 + 110*10) / (10 + 10) = 105.0
         assert_approx(vwap.latest().unwrap(), 105.0);
     }
@@ -263,18 +263,18 @@ mod tests {
         let mut vwap = VWAP::new(1000);
 
         // 场景 1: 第一根就是零成交量 (不应 ready)
-        vwap.update(create_candle(1000, 100.0, 0.0, true));
+        vwap.update(&create_candle(1000, 100.0, 0.0, true));
         assert!(!vwap.ready);
         assert!(vwap.latest().is_none());
 
         // 场景 2: 预览零成交量
-        vwap.update(create_candle(2000, 100.0, 0.0, false));
+        vwap.update(&create_candle(2000, 100.0, 0.0, false));
         assert!(vwap.latest().is_none());
 
         // 场景 3: 正常数据后跟零成交量确认 (VWAP 不应变)
-        vwap.update(create_candle(3000, 100.0, 10.0, true));
+        vwap.update(&create_candle(3000, 100.0, 10.0, true));
         let last_val = vwap.latest().unwrap();
-        vwap.update(create_candle(4000, 200.0, 0.0, true));
+        vwap.update(&create_candle(4000, 200.0, 0.0, true));
         assert_approx(vwap.latest().unwrap(), last_val);
     }
 
@@ -283,12 +283,12 @@ mod tests {
         let mut vwap = VWAP::new(1000);
         
         // 正常写入
-        vwap.update(create_candle(1000, 100.0, 10.0, true));
+        vwap.update(&create_candle(1000, 100.0, 10.0, true));
         let len_initial = vwap.last_n(100).len();
         let val_initial = vwap.latest().unwrap();
 
         // 模拟重复发送已确认的 Bar (同一 open_time)
-        vwap.update(create_candle(1000, 100.0, 10.0, true));
+        vwap.update(&create_candle(1000, 100.0, 10.0, true));
         
         // Context 应该拦截，或者内部逻辑识别出 Bar 时间已处理
         assert_eq!(vwap.last_n(100).len(), len_initial, "Duplicate bar should not increase results length");

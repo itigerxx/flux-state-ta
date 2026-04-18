@@ -89,7 +89,7 @@ impl Indicator for MACD {
     /// ======================================================
     /// update：MACD 级联计算逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // 1. 数据校验 (防止时间倒流或重复数据)
         if !self.ctx.validate(&candle) {
             return;
@@ -98,8 +98,8 @@ impl Indicator for MACD {
         let is_closed = candle.closed;
 
         // 2. 更新基础 EMA (EMA 内部已实现预览隔离逻辑)
-        self.fast_ema.update(candle.clone());
-        self.slow_ema.update(candle.clone());
+        self.fast_ema.update(candle);
+        self.slow_ema.update(candle);
 
         // 3. 提取 EMA 实时值进行计算
         if let (Some(f), Some(s)) = (self.fast_ema.latest(), self.slow_ema.latest()) {
@@ -109,9 +109,9 @@ impl Indicator for MACD {
             let signal_input = Candle {
                 close: dif,
                 closed: is_closed,
-                ..candle
+                ..candle.clone()
             };
-            self.signal_ema.update(signal_input);
+            self.signal_ema.update(&signal_input);
 
             if let Some(dea) = self.signal_ema.latest() {
                 let hist = (dif - dea) * 2.0;
@@ -182,15 +182,15 @@ mod tests {
         let mut macd = MACD::new(2, 3, 2, 1000);
 
         // 第 1-2 根 Bar
-        macd.update(create_candle(1000, 10.0, true));
-        macd.update(create_candle(2000, 11.0, true));
+        macd.update(&create_candle(1000, 10.0, true));
+        macd.update(&create_candle(2000, 11.0, true));
         assert!(!macd.ready, "MACD should not be ready during initial EMA warmup");
 
         // 第 3 根 Bar: Slow EMA(3) 此时会有值，DIF 产生，Signal EMA 开始 warmup
-        macd.update(create_candle(3000, 12.0, true));
+        macd.update(&create_candle(3000, 12.0, true));
         
         // 第 4 根 Bar: Signal EMA(2) 此时达到周期，全链路打通
-        macd.update(create_candle(4000, 13.0, true));
+        macd.update(&create_candle(4000, 13.0, true));
         assert!(macd.ready, "MACD should be ready after all cascaded EMAs warmup");
         assert!(macd.latest().is_some());
     }
@@ -201,20 +201,20 @@ mod tests {
         
         // 1. 快速填充数据使指标进入 Ready 状态
         for i in 0..50 {
-            macd.update(create_candle(i * 60, 100.0 + i as f64, true));
+            macd.update(&create_candle(i * 60, 100.0 + i as f64, true));
         }
         assert!(macd.ready);
         let initial_len = macd.last_n(1000).len();
 
         // 2. 模拟新 Bar 的第一个实时 Tick (Preview)
         let bar_time = 50 * 60;
-        macd.update(create_candle(bar_time, 160.0, false));
+        macd.update(&create_candle(bar_time, 160.0, false));
         
         assert_eq!(macd.last_n(1000).len(), initial_len + 1, "Should push a new position for preview");
         let p1 = macd.latest().unwrap();
 
         // 3. 模拟同一根 Bar 的第二个实时 Tick (价格剧烈波动)
-        macd.update(create_candle(bar_time, 180.0, false));
+        macd.update(&create_candle(bar_time, 180.0, false));
         assert_eq!(macd.last_n(1000).len(), initial_len + 1, "Should NOT push new position for same bar");
         
         let p2 = macd.latest().unwrap();
@@ -223,7 +223,7 @@ mod tests {
         assert_ne!(p1.hist, p2.hist, "HIST should update in real-time");
 
         // 4. 模拟该 Bar 正式收盘 (Confirmed)
-        macd.update(create_candle(bar_time, 180.0, true));
+        macd.update(&create_candle(bar_time, 180.0, true));
         assert_eq!(macd.last_n(1000).len(), initial_len + 1, "Should maintain same position after confirmed");
         
         // 收盘后的值应与最后一个预览值一致 (在价格一致的前提下)
@@ -231,7 +231,7 @@ mod tests {
         assert_approx(confirmed.dif, p2.dif);
 
         // 5. 跨 Bar 验证：下一根 Bar 的第一个 Tick 应该再次触发 push
-        macd.update(create_candle(bar_time + 60, 185.0, false));
+        macd.update(&create_candle(bar_time + 60, 185.0, false));
         assert_eq!(macd.last_n(1000).len(), initial_len + 2, "New bar should push a new preview position");
     }
 
@@ -239,19 +239,19 @@ mod tests {
     fn test_macd_state_isolation() {
         let mut macd = MACD::new(12, 26, 9, 1000);
         for i in 0..40 {
-            macd.update(create_candle(i * 60, 100.0, true));
+            macd.update(&create_candle(i * 60, 100.0, true));
         }
 
         // 记录收盘状态下的内部 DEA
         let confirmed_dea = macd.signal_ema.latest().unwrap();
 
         // 注入一个极端的预览值
-        macd.update(create_candle(10000, 9999.0, false));
+        macd.update(&create_candle(10000, 9999.0, false));
         assert_ne!(macd.signal_ema.latest().unwrap(), confirmed_dea);
 
         // 再次注入另一个预览值（同一根 Bar），验证它是基于 confirmed_dea 还是上一个预览值
         // EMA 的特性是基于前值计算，如果预览污染了状态，连续两次 update(false) 会导致错误累积
-        macd.update(create_candle(10000, 100.0, false));
+        macd.update(&create_candle(10000, 100.0, false));
         
         // 此时价格回到了收盘价，预览值应该重新回到接近 confirmed_dea 的水平
         // 如果内部状态被污染了，这里会算出一个基于 9999.0 的错误值
@@ -264,7 +264,7 @@ mod tests {
         
         // 模拟完全持平的市场
         for i in 0..50 {
-            macd.update(create_candle(i * 60, 100.0, true));
+            macd.update(&create_candle(i * 60, 100.0, true));
         }
         
         let out = macd.latest().unwrap();
@@ -276,7 +276,7 @@ mod tests {
         // 模拟重复的收盘信号 (由网络重试等引起)
         let last_time = 49 * 60;
         let len_before = macd.last_n(1000).len();
-        macd.update(create_candle(last_time, 100.0, true));
+        macd.update(&create_candle(last_time, 100.0, true));
         
         assert_eq!(macd.last_n(1000).len(), len_before, "Duplicate closed signal should be idempotent");
     }

@@ -137,7 +137,7 @@ impl Indicator for BOLL {
     /// ======================================================
     /// update：核心更新逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // ==================================================
         // 1. 数据校验
         // ==================================================
@@ -232,13 +232,13 @@ mod tests {
         let mut boll = BOLL::new(period, 2.0, 1000);
 
         // 第 1-2 根收盘，不应 ready
-        boll.update(create_candle(1000, 10.0, true));
-        boll.update(create_candle(2000, 20.0, true));
+        boll.update(&create_candle(1000, 10.0, true));
+        boll.update(&create_candle(2000, 20.0, true));
         assert!(!boll.ready);
         assert!(boll.latest().is_none());
 
         // 第 3 根收盘，ready
-        boll.update(create_candle(3000, 30.0, true));
+        boll.update(&create_candle(3000, 30.0, true));
         assert!(boll.ready);
 
         let out = boll.latest().unwrap();
@@ -254,13 +254,13 @@ mod tests {
         let period = 2;
         let mut boll = BOLL::new(period, 2.0, 1000);
 
-        boll.update(create_candle(1000, 10.0, true));
-        boll.update(create_candle(2000, 20.0, true)); // 窗口: [10, 20]
+        boll.update(&create_candle(1000, 10.0, true));
+        boll.update(&create_candle(2000, 20.0, true)); // 窗口: [10, 20]
 
         let out1 = boll.latest().unwrap();
         assert_eq!(out1.mid, 15.0); // (10+20)/2
 
-        boll.update(create_candle(3000, 40.0, true)); // 窗口: [20, 40], 10被弹出
+        boll.update(&create_candle(3000, 40.0, true)); // 窗口: [20, 40], 10被弹出
         let out2 = boll.latest().unwrap();
         assert_eq!(out2.mid, 30.0); // (20+40)/2
 
@@ -275,23 +275,23 @@ mod tests {
         let period = 2;
         let mut boll = BOLL::new(period, 2.0, 1000);
 
-        boll.update(create_candle(1000, 10.0, true));
-        boll.update(create_candle(2000, 20.0, true));
+        boll.update(&create_candle(1000, 10.0, true));
+        boll.update(&create_candle(2000, 20.0, true));
 
         // 预览一根极大值 (未收盘)
-        boll.update(create_candle(3000, 100.0, false));
+        boll.update(&create_candle(3000, 100.0, false));
         let preview_mid = boll.latest().unwrap().mid;
         assert_eq!(preview_mid, 60.0); // (20 + 100) / 2
 
         // 预览同一根 Bar，价格变动
-        boll.update(create_candle(3000, 40.0, false));
+        boll.update(&create_candle(3000, 40.0, false));
         assert_eq!(boll.latest().unwrap().mid, 30.0); // (20 + 40) / 2
 
         // 此时确认收盘，价格为 40
-        boll.update(create_candle(3000, 40.0, true));
+        boll.update(&create_candle(3000, 40.0, true));
 
         // 关键点：发送第 4 根 Bar 验证之前的 sum/sum_sq 没有被 100.0 污染
-        boll.update(create_candle(4000, 60.0, true)); // 窗口: [40, 60]
+        boll.update(&create_candle(4000, 60.0, true)); // 窗口: [40, 60]
         let final_mid = boll.latest().unwrap().mid;
         assert_eq!(final_mid, 50.0); // (40 + 60) / 2
     }
@@ -301,7 +301,7 @@ mod tests {
         let mut boll = BOLL::new(5, 2.0, 1000);
         // 发送完全相同的价格，测试 variance 是否会因为浮点误差变成微小的负数导致 sqrt 崩溃
         for i in 1..=10 {
-            boll.update(create_candle(i * 1000, 1.2345678, true));
+            boll.update(&create_candle(i * 1000, 1.2345678, true));
         }
 
         let out = boll.latest().unwrap();

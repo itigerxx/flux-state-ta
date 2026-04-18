@@ -107,7 +107,7 @@ impl Indicator for OBV {
     /// ======================================================
     /// update：OBV 实时更新逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // =========================
         // 1. 数据校验
         // =========================
@@ -183,20 +183,20 @@ mod tests {
         let mut obv = OBV::new(1000);
 
         // 1. 第一根 K 线：OBV 初始通常不累加（因为没有 prev_close）
-        obv.update(create_candle(1000, 100.0, 1000.0, true));
+        obv.update(&create_candle(1000, 100.0, 1000.0, true));
         assert_eq!(obv.latest().unwrap(), 0.0);
         assert!(obv.ready);
 
         // 2. 价格上涨：OBV += volume
-        obv.update(create_candle(2000, 105.0, 500.0, true));
+        obv.update(&create_candle(2000, 105.0, 500.0, true));
         assert_eq!(obv.latest().unwrap(), 500.0);
 
         // 3. 价格下跌：OBV -= volume
-        obv.update(create_candle(3000, 102.0, 300.0, true));
+        obv.update(&create_candle(3000, 102.0, 300.0, true));
         assert_eq!(obv.latest().unwrap(), 200.0); // 500 - 300
 
         // 4. 价格持平：OBV 不变
-        obv.update(create_candle(4000, 102.0, 800.0, true));
+        obv.update(&create_candle(4000, 102.0, 800.0, true));
         assert_eq!(obv.latest().unwrap(), 200.0);
     }
 
@@ -205,7 +205,7 @@ mod tests {
         let mut obv = OBV::new(1000);
         
         // 初始确认一根基准 K 线
-        obv.update(create_candle(1000, 100.0, 1000.0, true));
+        obv.update(&create_candle(1000, 100.0, 1000.0, true));
         let base_obv = obv.latest().unwrap(); // 0.0
 
         // --------------------------------------------------
@@ -214,25 +214,25 @@ mod tests {
         let bar_time = 2000;
         
         // Tick 1: 价格上涨 (Preview)
-        obv.update(create_candle(bar_time, 110.0, 500.0, false));
+        obv.update(&create_candle(bar_time, 110.0, 500.0, false));
         assert_eq!(obv.last_n(10).len(), 2);
         assert_eq!(obv.latest().unwrap(), base_obv + 500.0);
 
         // Tick 2: 价格跌破基准 (同一根 Bar, Preview)
         // 注意：OBV 的方向是基于上一个 *Confirmed* Close 计算的
-        obv.update(create_candle(bar_time, 90.0, 500.0, false));
+        obv.update(&create_candle(bar_time, 90.0, 500.0, false));
         assert_eq!(obv.last_n(10).len(), 2); // 长度不应增加
         assert_eq!(obv.latest().unwrap(), base_obv - 500.0); // 更新为负向
 
         // Tick 3: 最终收盘 (Confirmed)
-        obv.update(create_candle(bar_time, 110.0, 500.0, true));
+        obv.update(&create_candle(bar_time, 110.0, 500.0, true));
         assert_eq!(obv.last_n(10).len(), 2);
         assert_eq!(obv.latest().unwrap(), 500.0);
         
         // --------------------------------------------------
         // 跨 Bar 验证
         // --------------------------------------------------
-        obv.update(create_candle(3000, 120.0, 200.0, false));
+        obv.update(&create_candle(3000, 120.0, 200.0, false));
         assert_eq!(obv.last_n(10).len(), 3);
         assert_eq!(obv.latest().unwrap(), 500.0 + 200.0);
     }
@@ -240,19 +240,19 @@ mod tests {
     #[test]
     fn test_obv_state_isolation() {
         let mut obv = OBV::new(1000);
-        obv.update(create_candle(1000, 100.0, 1000.0, true));
+        obv.update(&create_candle(1000, 100.0, 1000.0, true));
         
         let confirmed_obv_before = obv.obv;
 
         // 注入一个极其夸张的预览 Tick
-        obv.update(create_candle(2000, 999.0, 999999.0, false));
+        obv.update(&create_candle(2000, 999.0, 999999.0, false));
         assert_ne!(obv.latest().unwrap(), confirmed_obv_before);
 
         // 核心验证：内部持久化的 obv 字段是否未被修改
         assert_eq!(obv.obv, confirmed_obv_before, "Preview should not pollute the inner accumulator state");
 
         // 注入另一个预览 Tick（同一根 Bar），验证计算基准是否依然是上一个 Confirmed Close
-        obv.update(create_candle(2000, 101.0, 100.0, false));
+        obv.update(&create_candle(2000, 101.0, 100.0, false));
         assert_eq!(obv.latest().unwrap(), confirmed_obv_before + 100.0);
     }
 
@@ -261,16 +261,16 @@ mod tests {
         let mut obv = OBV::new(1000);
         
         // 模拟重复的收盘信号
-        obv.update(create_candle(1000, 100.0, 1000.0, true));
-        obv.update(create_candle(1000, 100.0, 1000.0, true)); // 重复发送
+        obv.update(&create_candle(1000, 100.0, 1000.0, true));
+        obv.update(&create_candle(1000, 100.0, 1000.0, true)); // 重复发送
         
         assert_eq!(obv.last_n(100).len(), 1, "Should be idempotent for duplicate closed candles");
         
         // 模拟价格虽然没动，但成交量变化的预览（实时 Tick 更新）
-        obv.update(create_candle(2000, 100.0, 500.0, false));
+        obv.update(&create_candle(2000, 100.0, 500.0, false));
         let p1 = obv.latest().unwrap();
         
-        obv.update(create_candle(2000, 100.0, 800.0, false)); // 成交量增加，但价格没变
+        obv.update(&create_candle(2000, 100.0, 800.0, false)); // 成交量增加，但价格没变
         let p2 = obv.latest().unwrap();
         
         assert_eq!(p1, p2, "OBV should not change if price is equal to prev_close, regardless of volume");
@@ -279,11 +279,11 @@ mod tests {
     #[test]
     fn test_obv_negative_accumulation() {
         let mut obv = OBV::new(1000);
-        obv.update(create_candle(1000, 100.0, 1000.0, true));
+        obv.update(&create_candle(1000, 100.0, 1000.0, true));
         
         // 连续大幅度缩量下跌
-        obv.update(create_candle(2000, 90.0, 5000.0, true));
-        obv.update(create_candle(3000, 80.0, 5000.0, true));
+        obv.update(&create_candle(2000, 90.0, 5000.0, true));
+        obv.update(&create_candle(3000, 80.0, 5000.0, true));
         
         assert_eq!(obv.latest().unwrap(), -10000.0, "OBV can and should be able to go negative");
     }

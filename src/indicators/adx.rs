@@ -211,7 +211,7 @@ impl Indicator for ADX {
     /// ======================================================
     /// update：核心更新逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // ==================================================
         // 1. 数据校验
         // ==================================================
@@ -401,7 +401,7 @@ mod tests {
     use crate::data::candle::Candle;
 
     // 辅助工具：创建一个基础 Candle
-    fn create_candle(open_time: u64, high: f64, low: f64, close: f64, closed: bool) -> Candle {
+    fn create_canle(open_time: u64, high: f64, low: f64, close: f64, closed: bool) -> Candle {
         Candle {
             open_time,
             high,
@@ -419,22 +419,22 @@ mod tests {
         let mut adx = ADX::new(period,1000);
 
         // 1. 第一根 K 线：仅作为 prev 基准，不产生任何计算
-        adx.update(create_candle(1000, 100.0, 90.0, 95.0, true));
+        adx.update(&create_canle(1000, 100.0, 90.0, 95.0, true));
         assert!(adx.latest().is_none());
 
         // 2. 进入 TR/DM 累加阶段 (需 period = 3 个样本)
         // 此时已收 1 根，还需 2 根
-        adx.update(create_candle(2000, 110.0, 105.0, 108.0, true)); // Warmup Count = 1
-        adx.update(create_candle(3000, 115.0, 112.0, 114.0, true)); // Warmup Count = 2
-        adx.update(create_candle(4000, 120.0, 118.0, 119.0, true)); // Warmup Count = 3 (初始化 TR/DM 平滑种子)
+        adx.update(&create_canle(2000, 110.0, 105.0, 108.0, true)); // Warmup Count = 1
+        adx.update(&create_canle(3000, 115.0, 112.0, 114.0, true)); // Warmup Count = 2
+        adx.update(&create_canle(4000, 120.0, 118.0, 119.0, true)); // Warmup Count = 3 (初始化 TR/DM 平滑种子)
 
         // 此时 adx_value 仍为 None，因为正在收集 dx_window 里的 DX
         assert!(adx.latest().is_none());
 
         // 3. 进入 DX 收集阶段 (需再收集 period = 3 个 DX 才能产生第一个 ADX)
-        adx.update(create_candle(5000, 125.0, 123.0, 124.0, true)); // DX 1
-        adx.update(create_candle(6000, 130.0, 128.0, 129.0, true)); // DX 2
-        adx.update(create_candle(7000, 135.0, 133.0, 134.0, true)); // DX 3 -> 第一个 ADX 产生
+        adx.update(&create_canle(5000, 125.0, 123.0, 124.0, true)); // DX 1
+        adx.update(&create_canle(6000, 130.0, 128.0, 129.0, true)); // DX 2
+        adx.update(&create_canle(7000, 135.0, 133.0, 134.0, true)); // DX 3 -> 第一个 ADX 产生
 
         assert!(adx.ready);
         let first_result = adx.latest().unwrap();
@@ -451,7 +451,7 @@ mod tests {
         // 1. 稳定预热：温和上涨
         for i in 0..40 {
             let p = 100.0 + i as f64;
-            adx.update(create_candle(time, p + 1.0, p, p + 0.5, true));
+            adx.update(&create_canle(time, p + 1.0, p, p + 0.5, true));
             time += 1000;
         }
 
@@ -460,7 +460,7 @@ mod tests {
         // 2. 构造一个“纯净”的预览上涨
         // 关键：High 显著上移，但 Low 不能下移（防止产生 Minus_DM），且 Close 维持在高位
         let last_c = 100.0 + 39.0 + 0.5;
-        adx.update(create_candle(
+        adx.update(&create_canle(
             time,
             last_c + 10.0,
             last_c - 0.1,
@@ -488,7 +488,7 @@ mod tests {
 
         // 预热
         for i in 0..30 {
-            adx.update(create_candle(
+            adx.update(&create_canle(
                 i * 1000,
                 100.0 + i as f64,
                 90.0 + i as f64,
@@ -498,7 +498,7 @@ mod tests {
         }
 
         // 突然出现一个巨大的向下跳空
-        adx.update(create_candle(31000, 50.0, 40.0, 45.0, true));
+        adx.update(&create_canle(31000, 50.0, 40.0, 45.0, true));
 
         let res = adx.latest().unwrap();
         // 巨大的下跌应导致 minus_di 暴增
@@ -509,8 +509,8 @@ mod tests {
     #[test]
     fn test_adx_idempotency_via_context() {
         let mut adx = ADX::new(14, 1000);
-        let c1 = create_candle(1000, 100.0, 90.0, 95.0, true);
-        let c2 = create_candle(2000, 110.0, 100.0, 105.0, true);
+        let c1 = &create_canle(1000, 100.0, 90.0, 95.0, true);
+        let c2 = &create_canle(2000, 110.0, 100.0, 105.0, true);
 
         adx.update(c1);
         adx.update(c2);

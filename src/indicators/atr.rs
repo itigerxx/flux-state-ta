@@ -113,7 +113,7 @@ impl Indicator for ATR {
     /// ======================================================
     /// update：核心更新逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // ==================================================
         // 1. 数据校验
         // ==================================================
@@ -228,16 +228,16 @@ mod tests {
         let mut atr = ATR::new(period, 1000);
 
         // 1. 第一根仅作为 prev_close 基准
-        atr.update(create_candle(1000, 10.0, 5.0, 8.0, true));
+        atr.update(&create_candle(1000, 10.0, 5.0, 8.0, true));
         assert!(atr.latest().is_none());
 
         // 2. 累积 TR
-        // TR1: 12-7=5 (H-L > H-PC & L-PC)
-        atr.update(create_candle(2000, 12.0, 7.0, 9.0, true));
+        // TR1: 12-7=5 (H-L > H-PC & L-PC)/
+        atr.update(&create_candle(2000, 12.0, 7.0, 9.0, true));
         // TR2: 15-8=7 (H-PC=15-9=6, L-PC=8-9=1, H-L=15-8=7)
-        atr.update(create_candle(3000, 15.0, 8.0, 14.0, true));
+        atr.update(&create_candle(3000, 15.0, 8.0, 14.0, true));
         // TR3: 20-13=7 (H-PC=20-14=6, L-PC=13-14=1, H-L=20-13=7)
-        atr.update(create_candle(4000, 20.0, 13.0, 19.0, true));
+        atr.update(&create_candle(4000, 20.0, 13.0, 19.0, true));
 
         // 第一个 ATR = (5 + 7 + 7) / 3 = 6.3333...
         assert!(atr.ready);
@@ -251,22 +251,22 @@ mod tests {
         let mut atr = ATR::new(period, 1000);
 
         // 预热并获取第一个 ATR (6.333...)
-        atr.update(create_candle(1000, 10.0, 10.0, 10.0, true));
-        atr.update(create_candle(2000, 15.0, 10.0, 15.0, true)); // TR=5
-        atr.update(create_candle(3000, 20.0, 15.0, 20.0, true)); // TR=5
-        atr.update(create_candle(4000, 25.0, 20.0, 25.0, true)); // TR=5
+        atr.update(&create_candle(1000, 10.0, 10.0, 10.0, true));
+        atr.update(&create_candle(2000, 15.0, 10.0, 15.0, true)); // TR=5
+        atr.update(&create_candle(3000, 20.0, 15.0, 20.0, true)); // TR=5
+        atr.update(&create_candle(4000, 25.0, 20.0, 25.0, true)); // TR=5
 
         let first_atr = 5.0; // (5+5+5)/3
         assert_eq!(atr.latest().unwrap(), first_atr);
 
         // 第 5 根确认：TR = 30 - 25 = 5
         // Next_ATR = (5.0 * 2 + 5.0) / 3 = 5.0
-        atr.update(create_candle(5000, 30.0, 25.0, 30.0, true));
+        atr.update(&create_candle(5000, 30.0, 25.0, 30.0, true));
         assert_eq!(atr.latest().unwrap(), 5.0);
 
         // 第 6 根确认：出现波动放大 TR = 41 - 30 = 11
         // Next_ATR = (5.0 * 2 + 11.0) / 3 = 21 / 3 = 7.0
-        atr.update(create_candle(6000, 41.0, 30.0, 40.0, true));
+        atr.update(&create_candle(6000, 41.0, 30.0, 40.0, true));
         assert_eq!(atr.latest().unwrap(), 7.0);
     }
 
@@ -277,7 +277,7 @@ mod tests {
 
         // 预热
         for i in 1..=4 {
-            atr.update(create_candle(
+            atr.update(&create_candle(
                 i * 1000,
                 10.0 + i as f64,
                 10.0,
@@ -288,17 +288,17 @@ mod tests {
         let confirmed_atr = atr.latest().unwrap();
 
         // 预览一根巨大的波动 (closed: false)
-        atr.update(create_candle(5000, 100.0, 10.0, 50.0, false));
+        atr.update(&create_candle(5000, 100.0, 10.0, 50.0, false));
         let preview_atr = atr.latest().unwrap();
         assert!(preview_atr > confirmed_atr);
 
         // 再次更新同一根预览 Bar，波动缩小
-        atr.update(create_candle(5000, 20.0, 10.0, 15.0, false));
+        atr.update(&create_candle(5000, 20.0, 10.0, 15.0, false));
         assert!(atr.latest().unwrap() < preview_atr);
 
         // 此时内部保存的 confirmed atr 不应改变
         // 我们可以通过发送下一根 closed Bar 来验证
-        atr.update(create_candle(5000, 15.0, 15.0, 15.0, true)); // 实际这根 TR = 15-14=1 (假设上一根 Close 是 14)
+        atr.update(&create_candle(5000, 15.0, 15.0, 15.0, true)); // 实际这根 TR = 15-14=1 (假设上一根 Close 是 14)
         assert!((atr.latest().unwrap() - 2.3333333333333335).abs() < 1e-10);
     }
 
@@ -308,7 +308,7 @@ mod tests {
 
         // 预热 15 根使就绪
         for i in 1..=15 {
-            atr.update(create_candle(i * 1000, 100.0, 95.0, 98.0, true));
+            atr.update(&create_candle(i * 1000, 100.0, 95.0, 98.0, true));
         }
 
         let before_gap = atr.latest().unwrap();
@@ -316,7 +316,7 @@ mod tests {
         // 模拟一个巨大的向上跳空（Gap Up）
         // Prev Close = 98.0, Current High = 150.0, Low = 145.0
         // TR = max(150-145, 150-98, 145-98) = 52.0
-        atr.update(create_candle(16000, 150.0, 145.0, 148.0, true));
+        atr.update(&create_candle(16000, 150.0, 145.0, 148.0, true));
 
         let after_gap = atr.latest().unwrap();
         assert!(after_gap > before_gap);

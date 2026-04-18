@@ -115,7 +115,7 @@ impl Indicator for RSI {
     /// ======================================================
     /// update：RSI 核心更新逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // ==================================================
         // 1. 输入校验（乱序 / 重复数据直接丢弃）
         // ==================================================
@@ -270,18 +270,18 @@ mod tests {
         let mut rsi = RSI::new(3, 1000);
 
         // 1. 第 1 根：设置初始价格，无 RSI 输出
-        rsi.update(create_candle(1000, 100.0, true));
+        rsi.update(&create_candle(1000, 100.0, true));
         assert!(!rsi.ready);
 
         // 2. Warmup 阶段：需要 period(3) 次变动
         // 变动 1: +10
-        rsi.update(create_candle(2000, 110.0, true));
+        rsi.update(&create_candle(2000, 110.0, true));
         // 变动 2: -5
-        rsi.update(create_candle(3000, 105.0, true));
+        rsi.update(&create_candle(3000, 105.0, true));
         assert!(!rsi.ready);
 
         // 变动 3: +15 (此时达到 3 次变动)
-        rsi.update(create_candle(4000, 120.0, true));
+        rsi.update(&create_candle(4000, 120.0, true));
         assert!(rsi.ready);
 
         // 计算第一个 RSI:
@@ -298,10 +298,10 @@ mod tests {
         let mut rsi = RSI::new(3, 1000);
         
         // 先填充数据完成初始化 (100 -> 110 -> 105 -> 120)
-        rsi.update(create_candle(1000, 100.0, true));
-        rsi.update(create_candle(2000, 110.0, true));
-        rsi.update(create_candle(3000, 105.0, true));
-        rsi.update(create_candle(4000, 120.0, true));
+        rsi.update(&create_candle(1000, 100.0, true));
+        rsi.update(&create_candle(2000, 110.0, true));
+        rsi.update(&create_candle(3000, 105.0, true));
+        rsi.update(&create_candle(4000, 120.0, true));
         
         let base_avg_gain = rsi.avg_gain.unwrap(); // 8.333...
 
@@ -314,7 +314,7 @@ mod tests {
         // change = 130 - 120 = 10
         // next_avg_gain = (8.333 * 2 + 10) / 3 = 8.888...
         // next_avg_loss = (1.666 * 2 + 0) / 3 = 1.111...
-        rsi.update(create_candle(bar_time, 130.0, false));
+        rsi.update(&create_candle(bar_time, 130.0, false));
         let p1 = rsi.latest().unwrap();
         assert_eq!(rsi.last_n(10).len(), 2); // 1个确认的 + 1个预览的
         assert!(p1 > 83.33);
@@ -323,7 +323,7 @@ mod tests {
         // change = 90 - 120 = -30 -> loss = 30
         // next_avg_gain = (8.333 * 2 + 0) / 3 = 5.555...
         // next_avg_loss = (1.666 * 2 + 30) / 3 = 11.111...
-        rsi.update(create_candle(bar_time, 90.0, false));
+        rsi.update(&create_candle(bar_time, 90.0, false));
         let p2 = rsi.latest().unwrap();
         assert_eq!(rsi.last_n(10).len(), 2); // 长度不应增加
         assert!(p2 < p1);
@@ -335,7 +335,7 @@ mod tests {
         // --------------------------------------------------
         // 4. 正式确认验证 (Confirmed)
         // --------------------------------------------------
-        rsi.update(create_candle(bar_time, 90.0, true));
+        rsi.update(&create_candle(bar_time, 90.0, true));
         assert_eq!(rsi.last_n(10).len(), 2);
         assert_approx(rsi.latest().unwrap(), p2);
         
@@ -347,35 +347,35 @@ mod tests {
     #[test]
     fn test_rsi_extreme_scenarios() {
         let mut rsi = RSI::new(3, 1000);
-        rsi.update(create_candle(1000, 100.0, true));
+        rsi.update(&create_candle(1000, 100.0, true));
         
         // 场景 A: 全力上涨 (avg_loss 为 0)
-        rsi.update(create_candle(2000, 110.0, true));
-        rsi.update(create_candle(3000, 120.0, true));
-        rsi.update(create_candle(4000, 130.0, true));
+        rsi.update(&create_candle(2000, 110.0, true));
+        rsi.update(&create_candle(3000, 120.0, true));
+        rsi.update(&create_candle(4000, 130.0, true));
         assert_approx(rsi.latest().unwrap(), 100.0);
 
         // 场景 B: 横盘不动 (avg_gain & avg_loss 均为 0)
         let mut rsi_flat = RSI::new(3, 1000);
-        rsi_flat.update(create_candle(1000, 100.0, true));
-        rsi_flat.update(create_candle(2000, 100.0, true));
-        rsi_flat.update(create_candle(3000, 100.0, true));
-        rsi_flat.update(create_candle(4000, 100.0, true));
+        rsi_flat.update(&create_candle(1000, 100.0, true));
+        rsi_flat.update(&create_candle(2000, 100.0, true));
+        rsi_flat.update(&create_candle(3000, 100.0, true));
+        rsi_flat.update(&create_candle(4000, 100.0, true));
         assert_approx(rsi_flat.latest().unwrap(), 50.0);
     }
 
     #[test]
     fn test_rsi_idempotency_check() {
         let mut rsi = RSI::new(3, 1000);
-        rsi.update(create_candle(1000, 100.0, true));
-        rsi.update(create_candle(2000, 110.0, true));
-        rsi.update(create_candle(3000, 105.0, true));
-        rsi.update(create_candle(4000, 120.0, true));
+        rsi.update(&create_candle(1000, 100.0, true));
+        rsi.update(&create_candle(2000, 110.0, true));
+        rsi.update(&create_candle(3000, 105.0, true));
+        rsi.update(&create_candle(4000, 120.0, true));
         
         let initial_len = rsi.last_n(100).len();
         
         // 模拟重复发送已确认的相同 K 线
-        rsi.update(create_candle(4000, 120.0, true));
+        rsi.update(&create_candle(4000, 120.0, true));
         assert_eq!(rsi.last_n(100).len(), initial_len, "Duplicate candle should be ignored");
     }
 }

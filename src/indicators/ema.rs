@@ -84,7 +84,7 @@ impl Indicator for EMA {
     /// ======================================================
     /// update：EMA 核心更新逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // =========================
         // 1. 统一数据校验
         // =========================
@@ -196,13 +196,13 @@ mod tests {
         let mut ema = EMA::new(period, 1000);
 
         // 1. 前两根收盘，不应 ready
-        ema.update(create_candle(1000, 10.0, true));
-        ema.update(create_candle(2000, 20.0, true));
+        ema.update(&create_candle(1000, 10.0, true));
+        ema.update(&create_candle(2000, 20.0, true));
         assert!(!ema.ready);
         assert!(ema.latest().is_none());
 
         // 2. 第三根收盘，SMA 初始化：(10 + 20 + 30) / 3 = 20.0
-        ema.update(create_candle(3000, 30.0, true));
+        ema.update(&create_candle(3000, 30.0, true));
         assert!(ema.ready);
         assert_eq!(ema.latest().unwrap(), 20.0);
     }
@@ -213,18 +213,18 @@ mod tests {
         let mut ema = EMA::new(period, 1000);
 
         // 初始化到 20.0
-        ema.update(create_candle(1000, 10.0, true));
-        ema.update(create_candle(2000, 20.0, true));
-        ema.update(create_candle(3000, 30.0, true));
+        ema.update(&create_candle(1000, 10.0, true));
+        ema.update(&create_candle(2000, 20.0, true));
+        ema.update(&create_candle(3000, 30.0, true));
 
         // 第四根收盘价格为 40.0
         // EMA = 0.5 * 40.0 + (1 - 0.5) * 20.0 = 20.0 + 10.0 = 30.0
-        ema.update(create_candle(4000, 40.0, true));
+        ema.update(&create_candle(4000, 40.0, true));
         assert_eq!(ema.latest().unwrap(), 30.0);
 
         // 第五根收盘价格为 10.0
         // EMA = 0.5 * 10.0 + (1 - 0.5) * 30.0 = 5.0 + 15.0 = 20.0
-        ema.update(create_candle(5000, 10.0, true));
+        ema.update(&create_candle(5000, 10.0, true));
         assert_eq!(ema.latest().unwrap(), 20.0);
     }
 
@@ -235,23 +235,23 @@ mod tests {
 
         // 初始化到 20.0
         for i in 1..=3 {
-            ema.update(create_candle(i * 1000, i as f64 * 10.0, true));
+            ema.update(&create_candle(i * 1000, i as f64 * 10.0, true));
         }
         let confirmed_ema = ema.latest().unwrap(); // 20.0
 
         // 预览一根极其夸张的价格 (1000.0)
-        ema.update(create_candle(4000, 1000.0, false));
+        ema.update(&create_candle(4000, 1000.0, false));
         let preview_val = ema.latest().unwrap();
         assert!(preview_val > confirmed_ema); // 预览值应该反映 1000.0 的影响
 
         // 再次发送同一根 Bar 的预览，价格变动
-        ema.update(create_candle(4000, 40.0, false));
+        ema.update(&create_candle(4000, 40.0, false));
         let second_preview = ema.latest().unwrap();
         // 应基于原始 20.0 计算：0.5 * 40 + 0.5 * 20 = 30.0
         assert_eq!(second_preview, 30.0);
 
         // 重点：此时发送一根全新的 Bar (5000) 且直接收盘，价格 10.0
-        ema.update(create_candle(5000, 10.0, true));
+        ema.update(&create_candle(5000, 10.0, true));
         // EMA_5000 = 0.5 * 10.0 + 0.5 * 20.0 = 15.0
         assert_eq!(ema.latest().unwrap(), 15.0);
     }
@@ -260,7 +260,7 @@ mod tests {
     fn test_ema_last_n() {
         let mut ema = EMA::new(3, 1000);
         for i in 1..=5 {
-            ema.update(create_candle(i * 1000, i as f64 * 10.0, true));
+            ema.update(&create_candle(i * 1000, i as f64 * 10.0, true));
         }
         
         let tail = ema.last_n(2);

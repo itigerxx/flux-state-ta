@@ -151,7 +151,7 @@ impl Indicator for KDJ {
     /// ======================================================
     /// update：核心更新逻辑
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // ==================================================
         // 1. 数据校验
         // ==================================================
@@ -278,8 +278,8 @@ mod tests {
         // --------------------------------------------------
         // 1. Warmup 阶段：未达到周期不应有输出
         // --------------------------------------------------
-        kdj.update(create_candle(1000, 10.0, 10.0, 10.0, true));
-        kdj.update(create_candle(2000, 10.0, 10.0, 10.0, true));
+        kdj.update(&create_candle(1000, 10.0, 10.0, 10.0, true));
+        kdj.update(&create_candle(2000, 10.0, 10.0, 10.0, true));
         assert!(!kdj.ready);
         assert!(kdj.latest().is_none());
 
@@ -288,7 +288,7 @@ mod tests {
         // --------------------------------------------------
         // RSV = (10-10)/(10-10) -> 50.0 (平市处理)
         // K = 2/3*50 + 1/3*50 = 50.0
-        kdj.update(create_candle(3000, 10.0, 10.0, 10.0, true));
+        kdj.update(&create_candle(3000, 10.0, 10.0, 10.0, true));
         assert!(kdj.ready);
         let first = kdj.latest().unwrap();
         assert_approx(first.k, 50.0, 1e-10);
@@ -297,13 +297,13 @@ mod tests {
         // 3. Preview 实时性测试：同一根 Bar 的多次 Tick
         // --------------------------------------------------
         // 第一次 Tick (Preview)
-        kdj.update(create_candle(4000, 12.0, 15.0, 10.0, false));
+        kdj.update(&create_candle(4000, 12.0, 15.0, 10.0, false));
         let len_after_first_tick = kdj.last_n(10).len();
         assert_eq!(len_after_first_tick, 2); // 之前 1 个确认的 + 1 个预览的
         let p1 = kdj.latest().unwrap();
 
         // 第二次 Tick (同一根 Bar，价格上涨)
-        kdj.update(create_candle(4000, 14.0, 15.0, 10.0, false));
+        kdj.update(&create_candle(4000, 14.0, 15.0, 10.0, false));
         assert_eq!(kdj.last_n(10).len(), 2); // 长度不应增加（幂等）
         let p2 = kdj.latest().unwrap();
         assert!(p2.k > p1.k, "K should increase when close price increases in preview");
@@ -320,7 +320,7 @@ mod tests {
         // --------------------------------------------------
         // 5. 闭合测试：Preview 转为正式数据
         // --------------------------------------------------
-        kdj.update(create_candle(4000, 14.0, 15.0, 10.0, true));
+        kdj.update(&create_candle(4000, 14.0, 15.0, 10.0, true));
         assert_eq!(kdj.last_n(10).len(), 2); // 长度依然是 2
         assert_ne!(kdj.k, 50.0); // 内部状态现在应该更新了
         assert_approx(kdj.latest().unwrap().k, p2.k, 1e-10);
@@ -328,7 +328,7 @@ mod tests {
         // --------------------------------------------------
         // 6. 跨 Bar 清理测试：新 Bar 应该开启新位置
         // --------------------------------------------------
-        kdj.update(create_candle(5000, 15.0, 16.0, 14.0, false));
+        kdj.update(&create_candle(5000, 15.0, 16.0, 14.0, false));
         assert_eq!(kdj.last_n(10).len(), 3); // 确认 2 个 + 预览 1 个
     }
 
@@ -337,7 +337,7 @@ mod tests {
         let mut kdj = KDJ::new(3, 1000);
         // 模拟价格完全不动（HHV == LLV）
         for i in 0..5 {
-            kdj.update(create_candle(i * 1000, 100.0, 100.0, 100.0, true));
+            kdj.update(&create_candle(i * 1000, 100.0, 100.0, 100.0, true));
         }
         let out = kdj.latest().unwrap();
         // 结果应稳定在 50 附近，且不应发生除零错误或 NaN
@@ -351,14 +351,14 @@ mod tests {
     fn test_kdj_extreme_volatility() {
         let mut kdj = KDJ::new(3, 1000);
         // 快速拉升后快速回落
-        kdj.update(create_candle(1000, 10.0, 10.0, 10.0, true));
-        kdj.update(create_candle(2000, 20.0, 20.0, 10.0, true));
-        kdj.update(create_candle(3000, 30.0, 30.0, 10.0, true));
+        kdj.update(&create_candle(1000, 10.0, 10.0, 10.0, true));
+        kdj.update(&create_candle(2000, 20.0, 20.0, 10.0, true));
+        kdj.update(&create_candle(3000, 30.0, 30.0, 10.0, true));
         
         let first_k = kdj.latest().unwrap().k;
         
         // 预览一个巨大的下跌
-        kdj.update(create_candle(4000, 5.0, 30.0, 5.0, false));
+        kdj.update(&create_candle(4000, 5.0, 30.0, 5.0, false));
         let crash_k = kdj.latest().unwrap().k;
         
         assert!(crash_k < first_k, "K should drop significantly on price crash");
@@ -367,14 +367,14 @@ mod tests {
     #[test]
     fn test_kdj_idempotent_closed_signals() {
         let mut kdj = KDJ::new(3, 1000);
-        kdj.update(create_candle(1000, 10.0, 11.0, 9.0, true));
-        kdj.update(create_candle(2000, 10.0, 11.0, 9.0, true));
-        kdj.update(create_candle(3000, 10.0, 11.0, 9.0, true));
+        kdj.update(&create_candle(1000, 10.0, 11.0, 9.0, true));
+        kdj.update(&create_candle(2000, 10.0, 11.0, 9.0, true));
+        kdj.update(&create_candle(3000, 10.0, 11.0, 9.0, true));
         
         let len_initial = kdj.last_n(100).len();
 
         // 模拟同一个 Bar 的 Closed 信号由于某种原因发送了两次
-        kdj.update(create_candle(3000, 10.0, 11.0, 9.0, true));
+        kdj.update(&create_candle(3000, 10.0, 11.0, 9.0, true));
         
         // 如果 context 校验正常，长度不应改变（由 CandleCheckContext 保证）
         // 如果 context 没过滤掉，这里即便进入逻辑，结果也应保持一致

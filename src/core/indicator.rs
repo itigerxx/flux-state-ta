@@ -4,7 +4,7 @@ pub trait Indicator {
     type Output;
 
     /// 输入数据，更新指标状态
-    fn update(&mut self, candle: Candle);
+    fn update(&mut self, candle: &Candle);
 
     /// 获取当前最新指标值
     fn latest(&self) -> Option<Self::Output>;

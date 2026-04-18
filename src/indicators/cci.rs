@@ -64,7 +64,7 @@ impl CCI {
 impl Indicator for CCI {
     type Output = f64;
 
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         if !self.ctx.validate(&candle) {
             return;
         }
@@ -163,13 +163,13 @@ mod tests {
         let mut cci = CCI::new(period, 1000);
 
         // 填充前两根
-        cci.update(create_candle(1000, 10.0, 10.0, 10.0, true)); // TP=10
-        cci.update(create_candle(2000, 20.0, 20.0, 20.0, true)); // TP=20
+        cci.update(&create_candle(1000, 10.0, 10.0, 10.0, true)); // TP=10
+        cci.update(&create_candle(2000, 20.0, 20.0, 20.0, true)); // TP=20
         assert!(!cci.ready);
         assert!(cci.latest().is_none());
 
         // 第三根
-        cci.update(create_candle(3000, 30.0, 30.0, 30.0, true)); // TP=30
+        cci.update(&create_candle(3000, 30.0, 30.0, 30.0, true)); // TP=30
         assert!(cci.ready);
 
         // SMA = (10+20+30)/3 = 20
@@ -187,19 +187,19 @@ mod tests {
         // 1. 填充 period - 2 根闭合数据 (共 3 根)
         for i in 0..3 {
             // 传入 High, Low, Close (此处假设都为 100.0)
-            cci.update(create_candle(1000 + i * 100, 100.0, 100.0, 100.0, true));
+            cci.update(&create_candle(1000 + i * 100, 100.0, 100.0, 100.0, true));
         }
         assert!(cci.latest().is_none(), "数据不足 5 根时应为 None");
 
         // 2. 填充到临界点：第 4 根闭合
-        cci.update(create_candle(1400, 100.0, 100.0, 100.0, true));
+        cci.update(&create_candle(1400, 100.0, 100.0, 100.0, true));
 
         // 此时 Window 长度为 4。在严苛模式下，latest() 依然应该是 None
         assert!(cci.latest().is_none());
 
         // 3. 第 5 根预览
         // (4 根已闭合 + 1 根当前预览 = 5 根，满足 Period)
-        cci.update(create_candle(1500, 110.0, 110.0, 110.0, false));
+        cci.update(&create_candle(1500, 110.0, 110.0, 110.0, false));
 
         // 4. 验证预览输出
         // 只有你的 update 逻辑里写了 `if self.window.len() + 1 >= self.period`，此处才会有值
@@ -216,11 +216,11 @@ mod tests {
         let period = 2;
         let mut cci = CCI::new(period, 1000);
 
-        cci.update(create_candle(1000, 10.0, 10.0, 10.0, true));
-        cci.update(create_candle(2000, 20.0, 20.0, 20.0, true)); // 窗口 [10, 20]
+        cci.update(&create_candle(1000, 10.0, 10.0, 10.0, true));
+        cci.update(&create_candle(2000, 20.0, 20.0, 20.0, true)); // 窗口 [10, 20]
 
         // 第三根确认，10 应该被踢出，窗口变为 [20, 40]
-        cci.update(create_candle(3000, 40.0, 40.0, 40.0, true));
+        cci.update(&create_candle(3000, 40.0, 40.0, 40.0, true));
         // SMA = (20+40)/2 = 30
         // MD = (|20-30| + |40-30|) / 2 = 10
         // CCI = (40 - 30) / (0.015 * 10) = 10 / 0.15 = 66.66666666666667
@@ -233,9 +233,9 @@ mod tests {
         let mut cci = CCI::new(period, 1000);
 
         // 发送完全相同的价格，此时 MD 为 0
-        cci.update(create_candle(1000, 10.0, 10.0, 10.0, true));
-        cci.update(create_candle(2000, 10.0, 10.0, 10.0, true));
-        cci.update(create_candle(3000, 10.0, 10.0, 10.0, true));
+        cci.update(&create_candle(1000, 10.0, 10.0, 10.0, true));
+        cci.update(&create_candle(2000, 10.0, 10.0, 10.0, true));
+        cci.update(&create_candle(3000, 10.0, 10.0, 10.0, true));
 
         // MD 为 0 时，代码中处理为 0.0，防止除以零崩溃
         assert_eq!(cci.latest().unwrap(), 0.0);

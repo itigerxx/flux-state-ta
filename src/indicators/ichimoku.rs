@@ -210,7 +210,7 @@ impl Indicator for Ichimoku {
     /// ======================================================
     /// update：实时更新入口
     /// ======================================================
-    fn update(&mut self, candle: Candle) {
+    fn update(&mut self, candle: &Candle) {
         // 1. 数据校验
         if !self.ctx.validate(&candle) {
             return;
@@ -223,11 +223,11 @@ impl Indicator for Ichimoku {
         // ==================================================
         match self.preview_bar_time {
             Some(t) if t == bar_time => {
-                self.candles.update_latest(candle);
+                self.candles.update_latest(candle.clone());
             }
 
             _ => {
-                self.candles.push(candle);
+                self.candles.push(candle.clone());
                 self.preview_bar_time = Some(bar_time);
             }
         }
@@ -289,7 +289,7 @@ mod tests {
 
         // 填充 5 根数据 (不足以计算 Span B)
         for i in 1..=5 {
-            ichi.update(create_candle(
+            ichi.update(&create_candle(
                 i * 1000,
                 i as f64 * 10.0,
                 i as f64 * 5.0,
@@ -306,7 +306,7 @@ mod tests {
         // 此时 candles 包含:
         // H: [10, 20, 30, 40, 50, 60]
         // L: [ 5, 10, 15, 20, 25, 30]
-        ichi.update(create_candle(6000, 60.0, 30.0, 42.0, true));
+        ichi.update(&create_candle(6000, 60.0, 30.0, 42.0, true));
 
         assert!(ichi.ready);
         let out = ichi.latest().unwrap();
@@ -328,40 +328,40 @@ mod tests {
         let mut ichi = Ichimoku::with_periods(2, 2, 2, 1000);
 
         // 初始化 2 根
-        ichi.update(create_candle(1000, 20.0, 10.0, 15.0, true));
-        ichi.update(create_candle(2000, 40.0, 20.0, 30.0, true));
+        ichi.update(&create_candle(1000, 20.0, 10.0, 15.0, true));
+        ichi.update(&create_candle(2000, 40.0, 20.0, 30.0, true));
 
         // 预览第 3 根: 此时 Tenkan 范围是 [Bar2, Bar3]
         // Bar2: H=40, L=20
         // Bar3 (Preview): H=50, L=30, C=35
-        ichi.update(create_candle(3000, 50.0, 30.0, 35.0, false));
+        ichi.update(&create_candle(3000, 50.0, 30.0, 35.0, false));
 
         // Tenkan: HH(40,50)=50, LL(20,30)=20 => (50+20)/2 = 35.0
         assert_eq!(ichi.latest().unwrap().tenkan, 35.0);
 
         // 预览更新: Bar3 突破了更高的 High 和 更低的 Low
         // Bar3 (Preview): H=100, L=10, C=50
-        ichi.update(create_candle(3000, 100.0, 10.0, 50.0, false));
+        ichi.update(&create_candle(3000, 100.0, 10.0, 50.0, false));
 
         // Tenkan: HH(40,100)=100, LL(20,10)=10 => (100+10)/2 = 55.0
         assert_eq!(ichi.latest().unwrap().tenkan, 55.0);
 
         // 确认收盘
-        ichi.update(create_candle(3000, 100.0, 10.0, 50.0, true));
+        ichi.update(&create_candle(3000, 100.0, 10.0, 50.0, true));
         assert_eq!(ichi.latest().unwrap().tenkan, 55.0);
     }
 
     #[test]
     fn test_ichimoku_data_isolation() {
         let mut ichi = Ichimoku::with_periods(2, 2, 2, 1000);
-        ichi.update(create_candle(1000, 20.0, 10.0, 15.0, true));
-        ichi.update(create_candle(2000, 20.0, 10.0, 15.0, true));
+        ichi.update(&create_candle(1000, 20.0, 10.0, 15.0, true));
+        ichi.update(&create_candle(2000, 20.0, 10.0, 15.0, true));
 
         // 预览态产生了一个极端值 1000.0，推入了序列
-        ichi.update(create_candle(3000, 1000.0, 1.0, 500.0, false));
+        ichi.update(&create_candle(3000, 1000.0, 1.0, 500.0, false));
 
         // 直接跳到下一根 Bar 收盘
-        ichi.update(create_candle(4000, 20.0, 10.0, 15.0, true));
+        ichi.update(&create_candle(4000, 20.0, 10.0, 15.0, true));
 
         // 按照“占位优先”逻辑，Bar 3 的预览值 1000.0 会被保留
         // Tenkan (2周期) = (HH(1000, 20) + LL(1, 10)) / 2
